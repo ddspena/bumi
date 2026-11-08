@@ -193,9 +193,7 @@
         .loc-popup { min-width: 220px; font-family: inherit; }
         .loc-popup .lp-country { font-size: 16px; font-weight: 700; color: #2c3e50; margin-bottom: 4px; }
         .loc-popup .lp-coord { font-size: 11px; color: #888; margin-bottom: 10px; }
-        .loc-popup .lp-block {
-            padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
-        }
+        .loc-popup .lp-block { padding: 10px 12px; border-radius: 8px; margin-bottom: 8px; }
         .loc-popup .lp-block.time-block { background: #e8f4f8; }
         .loc-popup .lp-block.date-block { background: #fff9e6; }
         .loc-popup .lp-block-label {
@@ -209,13 +207,8 @@
             font-variant-numeric: tabular-nums; letter-spacing: 0.5px;
             line-height: 1.1;
         }
-        .loc-popup .lp-day {
-            font-size: 15px; font-weight: 700; color: #2c3e50; line-height: 1.2;
-        }
-        .loc-popup .lp-tz {
-            font-size: 11px; color: #666; margin-top: 4px;
-            font-family: 'Courier New', monospace;
-        }
+        .loc-popup .lp-day { font-size: 15px; font-weight: 700; color: #2c3e50; line-height: 1.2; }
+        .loc-popup .lp-tz { font-size: 11px; color: #666; margin-top: 4px; font-family: 'Courier New', monospace; }
         .loc-popup .lp-loading {
             color: #f39c12; font-size: 13px; padding: 8px 0;
             display: flex; align-items: center; gap: 8px;
@@ -358,6 +351,9 @@
             maxZoom: 18,
             zoomControl: true
         }).setView([20, 0], 2);
+
+        // Flag agar auto-zoom ke Matahari hanya terjadi sekali
+        let hasInitialZoomed = false;
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -558,7 +554,7 @@
         }
 
         // ============================================================
-        // KLIK PETA → LIHAT WAKTU LOKAL, HARI, TANGGAL
+        // KLIK PETA → WAKTU LOKAL, HARI, TANGGAL
         // ============================================================
         let activePopup = null;
         let popupTimer = null;
@@ -573,7 +569,6 @@
         });
 
         mapRef.on('click', async function (e) {
-            // Bersihkan popup & timer sebelumnya
             stopPopupTimer();
             if (activePopup) {
                 try { mapRef.closePopup(activePopup); } catch (_) {}
@@ -583,15 +578,13 @@
             const lat = e.latlng.lat;
             const lng = e.latlng.lng;
 
-            // Tampilkan popup dengan spinner loading
             const popup = L.popup({
                 maxWidth: 320,
                 minWidth: 220,
                 autoPan: true,
                 autoPanPadding: [20, 20],
                 closeOnClick: true,
-                autoClose: true,
-                className: 'loc-popup-wrapper'
+                autoClose: true
             })
                 .setLatLng(e.latlng)
                 .setContent(
@@ -604,16 +597,13 @@
 
             activePopup = popup;
 
-            // Ambil info negara & zona waktu (paralel)
             const [country, tzInfo] = await Promise.all([
                 getCountryInfo(lat, lng),
                 getTimezoneInfo(lat, lng)
             ]);
 
-            // Kalau popup sudah ditutup pengguna, jangan update
             if (activePopup !== popup) return;
 
-            // Jika zona waktu tidak ditemukan
             if (!tzInfo.timezone) {
                 popup.setContent(
                     '<div class="loc-popup">' +
@@ -625,31 +615,25 @@
                 return;
             }
 
-            // Render konten utama
             const title = country.city
                 ? '📍 ' + country.flag + ' ' + country.city + ', ' + country.country
                 : '📍 ' + country.flag + ' ' + country.country;
 
-            // Fungsi render yang dipanggil sekali & tiap detik
             function renderPopup(now) {
                 let timeStr, dayStr, dateStr;
                 try {
-                    const timeFmt = new Intl.DateTimeFormat('id-ID', {
+                    timeStr = new Intl.DateTimeFormat('id-ID', {
                         timeZone: tzInfo.timezone,
                         hour: '2-digit', minute: '2-digit', second: '2-digit',
                         hour12: false
-                    });
-                    const dayFmt = new Intl.DateTimeFormat('id-ID', {
-                        timeZone: tzInfo.timezone,
-                        weekday: 'long'
-                    });
-                    const dateFmt = new Intl.DateTimeFormat('id-ID', {
+                    }).format(now);
+                    dayStr = new Intl.DateTimeFormat('id-ID', {
+                        timeZone: tzInfo.timezone, weekday: 'long'
+                    }).format(now);
+                    dateStr = new Intl.DateTimeFormat('id-ID', {
                         timeZone: tzInfo.timezone,
                         day: 'numeric', month: 'long', year: 'numeric'
-                    });
-                    timeStr = timeFmt.format(now);
-                    dayStr = dayFmt.format(now);
-                    dateStr = dateFmt.format(now);
+                    }).format(now);
                 } catch (err) {
                     timeStr = '--:--:--';
                     dayStr = '?';
@@ -660,20 +644,17 @@
                     '<div class="loc-popup">' +
                     '<div class="lp-country">' + title + '</div>' +
                     '<div class="lp-coord">' + lat.toFixed(2) + '°, ' + lng.toFixed(2) + '°</div>' +
-
                     '<div class="lp-block time-block">' +
                     '<div class="lp-block-label">🕐 Waktu Lokal</div>' +
                     '<div class="lp-time">' + timeStr + '</div>' +
                     '<div class="lp-tz">' + tzInfo.timezone +
                     (tzInfo.abbreviation ? ' · ' + tzInfo.abbreviation : '') + '</div>' +
                     '</div>' +
-
                     '<div class="lp-block date-block">' +
                     '<div class="lp-block-label">📅 Hari & Tanggal</div>' +
                     '<div class="lp-day">' + dayStr + '</div>' +
                     '<div class="lp-day" style="font-size:13px;font-weight:600;color:#555;margin-top:2px;">' + dateStr + '</div>' +
                     '</div>' +
-
                     '</div>'
                 );
             }
@@ -742,6 +723,14 @@
             }
 
             diag('✅ Astronomy OK (' + (workingMethod || '?') + ')', 'ok');
+
+            // ============================================================
+            // AUTO-ZOOM KE MATAHARI (hanya sekali saat pertama dibuka)
+            // ============================================================
+            if (!hasInitialZoomed) {
+                hasInitialZoomed = true;
+                mapRef.setView([sunPos.lat, sunPos.lng], 4, { animate: false });
+            }
 
             updateNightArea(sunPos.lat, sunPos.lng);
             sunMarker.setLatLng([sunPos.lat, sunPos.lng]);
